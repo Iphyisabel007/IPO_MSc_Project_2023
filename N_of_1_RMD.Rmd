@@ -1,0 +1,525 @@
+---
+title: "IPO MSc Project 2023"
+author: "Odiaka Ifeyinwa Philippa"
+date: "2023-08-01"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+## SERIES N-OF-1 SECONDARY DATA ANALYSIS OF A RANDOMISED CONTROLLED TRIAL
+
+
+### Load the required packages 
+```{r}
+library(pacman)
+p_load(datasets, tidyverse, readxl, writexl, DescTools, car, gdata, gmodels, gtsummary, extrafont, devtools, rstatix, ggpubr, astsa, metafor, meta, dmetar, esc, forestplot, grid, gridExtra, rmarkdown, knitr)
+```
+
+
+### Set up the working directory 
+```{r}
+setwd("C:/Users/User/Documents/University of Aberdeen MSC Clinical Nutrition- 51987258/Course 9. Research Project/7. Project Docs")
+```
+
+
+### Read the data from the excel sheet and view in R 
+```{r}
+series_df <- read_excel("N_of_1_datasets.xlsx", 
+                        sheet = "time_series_ẍ")
+View(series_df)
+```
+
+
+### Set to required variable type by converting character variables to factor and ensuring numeric varaiables are numeric 
+```{r}
+series_df$pid <- as.factor(series_df$pid)
+series_df$sequence <- factor(series_df$sequence, levels = c("morning", "evening"))
+series_df$period <- as.factor(series_df$period)
+series_df$intervention <- as.factor(series_df$intervention)
+```
+
+
+### Remove rows 48 and 49 of the time variable which correcpond to the washout period. This is because no blood glucose recording was taken during the washout period and hence, should not be featured in the histogram. Plot the distribution of the mean blood glucose (the outcome variable). 
+```{r}
+histogram_df <- series_df %>%
+  filter(!time %in% c(48, 49))
+
+hist_glucose <- ggplot(histogram_df, aes(x= glucose)) +
+  geom_histogram(mapping= aes(y= after_stat(density)), fill= rgb(170/255, 225/255, 244/255), colour= "black", bins = 20, show.legend = FALSE) +
+  geom_density(colour= "black", adjust=2) +
+  labs(title = str_wrap("Distribution of Average Hourly 24-Hour Blood Glucose During Baseline and Each Intervention Period", 60), x= "24-Hour Blood Glucose (mmol/l)", y= "") +
+  theme(plot.title = element_text(colour = "firebrick4", size = 32, hjust= 0.5, face = "bold", margin = margin(10,10,10,10)),
+        axis.text.x = element_text(colour = "slategray4", size = 28, face = "bold", family = "serif"),
+        axis.text.y = element_blank(), 
+        axis.title.x = element_text(colour = "slategray4", size = 28, angle = 0, face = "bold", family = "serif"),
+        strip.background = element_blank(),
+        strip.text = element_blank())
+hist_glucose
+```
+
+
+### Create variables to be used in the annotation syntax. Plot the time-series / spaghetti plot 
+```{r}
+col_val <- c("Danestone_06"="navyblue", "Danestone_23"="turquoise1", "Dufftown_06"="forestgreen", "Elmbank_14"="goldenrod1", "Finlayson_Stt_23"="darkorange1", "Finlayson_Stt_26"="yellow1", "Garthdee_05"="darkviolet", "Holburn_23"="royalblue1", "Holburn_26"="hotpink1", "Kingswells_03"="lightcoral", "Scotstown_23"="skyblue1", "Stonehaven_01"="sandybrown", "Stonehaven_11"="lightseagreen", "Stonehaven_13"="violet", "Stonehaven_16"="orangered1", "Stonehaven_26"="red1", "Stonehaven_32"="aquamarine", "Stonehaven_33"="lawngreen")
+
+col_lab <- c("Danestone_06", "Danestone_23", "Dufftown_06", "Elmbank_14", "Finlayson_Stt_23", "Finlayson_Stt_26", "Garthdee_05", "Holburn_23", "Holburn_26", "Kingswells_03", "Scotstown_23", "Stonehaven_01", "Stonehaven_11", "Stonehaven_13", "Stonehaven_16", "Stonehaven_26", "Stonehaven_32", "Stonehaven_33")
+
+lty_val <- c("morning" = 1, "evening" = 2)
+lty_lab <- c("morning first", "evening first")
+
+series_obj <- ggplot() +
+  geom_line(series_df, mapping = aes(x = time, y = glucose, colour = pid, linetype = sequence), linewidth = 0.8, alpha = 1) +
+  facet_grid(sequence ~ ., labeller = labeller(sequence = "")) +
+  scale_x_continuous(limits = c(0, 73), expand = c(0.001, 0.001), breaks = scales::breaks_width(4)) +
+  scale_y_continuous(limits = c(3, 24), breaks = scales::breaks_width(4)) +
+  geom_vline(xintercept = c(23, 47, 50), linetype = "longdash", colour = "slategray4", linewidth = 1) +
+  labs(title = "Time-Series Plot of 24-Hour Blood Glucose", y = "24-Hour Blood Glucose (mmol/l)", x = "Time (hours)") +
+  geom_text(data = data.frame(sequence = "morning", time = c(10, 35, 62), glucose = rep(23, 3), label = c("Baseline", "Morning Exercise", "Evening Exercise")),
+            aes(x = time, y = glucose, label = label), size = 12, family = "serif", fontface = "italic", colour = "slategray4") +
+  geom_text(data = data.frame(sequence = "evening", time = c(10, 35, 62), glucose = rep(20, 3), label = c("Baseline", "Evening Exercise", "Morning Exercise")),
+            aes(x = time, y = glucose, label = label), size = 12, family = "serif", fontface = "italic", colour = "slategray4") +
+  annotate("text", x= 48.5, y=12, label= "Wash-out", size=12, family= "serif", fontface= "italic", angle= 90, colour= "slategray4") +
+  scale_colour_manual(name = "Participants", values = col_val, labels = col_lab) +
+  guides(colour = guide_legend(title.position = "top", title.hjust = 0.5, nrow = 3, byrow = TRUE, keyheight = 0.5)) +
+  scale_linetype_manual(name = "Intervention Sequence", values = lty_val, labels = lty_lab, limits = c("morning", "evening")) +
+  guides(linetype = guide_legend(title.position = "top", title.hjust = 0.5, nrow = 2, byrow = TRUE, keyheight = 1.7, colour = "lavender")) +
+  theme(panel.background = element_rect(fill = "lavender", colour = "slategray4"), 
+        legend.position = "bottom", 
+        legend.title = element_text(family = "Arial Black", size = 14, face = "italic", colour = "slategray4"),
+        legend.background = element_rect(fill = "lavender", colour = 0.5),
+        legend.key.size = unit(0.5, units = "cm"),
+        legend.key.width = unit(1.5, units = "cm"),
+        legend.text = element_text(size = 14, face = "italic", colour = "slategray4"), 
+        plot.title = element_text(colour = "slategray4", size = 32, hjust = 0.5, face = "bold", margin = margin(10, 10, 10, 10)),
+        axis.text.x = element_text(colour = "slategray4", size = 24, face = "bold", family = "serif"),
+        axis.text.y = element_text(colour = "slategray4", size = 24, face = "bold", family = "serif"), 
+        axis.title.x = element_text(colour = "slategray4", size = 24, angle = 0, face = "bold", family = "serif"),
+        axis.title.y = element_text(colour = "slategray4", size = 24, angle = 90, face = "bold", family = "serif"),
+        strip.background = element_blank(),
+        strip.text = element_blank())
+
+series_obj
+```
+
+
+### Create the data frame for the meta-analysis by converting the structure from long to wide and creating more variables to be used for the analysis using the mutate function 
+```{r}
+meta_df <- series_df %>%
+  filter(!time %in% c(48, 49)) %>%
+  mutate(time= ifelse(time == c(24:47), c(0:23), time)) %>%
+  mutate(time= ifelse(time == c(50:73), c(0:23), time)) %>%
+  mutate(period = factor(period, levels = c("baseline", "period_1", "period_2"))) %>%
+  mutate(intervention = factor(intervention, levels = c("baseline", "morning", "evening"))) %>%
+  select(-period) %>%
+  pivot_wider(names_from = intervention, values_from = glucose) %>%
+  mutate(diff_m=  morning - baseline, 
+         diff_e=  evening - baseline) %>%
+  group_by(time) %>%
+  mutate(sd_m = round(sd(diff_m), 2), 
+         sd_e = round(sd(diff_e), 2)) %>%
+  relocate(diff_m, .after = morning) %>%
+  relocate(sd_m, .before  = evening)
+
+View(meta_df)
+```
+
+
+### Group the data frame by participants 
+```{r}
+meta_df_pid <- meta_df %>%
+  group_by(pid) %>%
+  summarize(diff_m= mean(diff_m), sd_m= sum(sd_m), diff_e= mean(diff_e), sd_e= sum(sd_e))
+```
+
+
+### Create a new varaible for the participant grouping by timing of metformin intake during morning exercise and add to the grouped data frame. Change the new variabble type from character to factor 
+```{r}
+meta_df_pid$met_timing_m <- c("Danestone_06"="pre_breakfast", "Danestone_23"="pre_breakfast", "Dufftown_06"="NA", "Elmbank_14"="pre_breakfast", "Finlayson_Stt_23"="pre_breakfast", "Finlayson_Stt_26"="pre_breakfast", "Garthdee_05"="pre_breakfast", "Holburn_23"="NA", "Holburn_26"="pre_breakfast", "Kingswells_03"="post_breakfast", "Scotstown_23"="NA", "Stonehaven_01"="pre_breakfast", "Stonehaven_11"="post_breakfast", "Stonehaven_13"="post_breakfast", "Stonehaven_16"="NA", "Stonehaven_26"="NA", "Stonehaven_32"="post_breakfast", "Stonehaven_33"="post_breakfast")
+
+meta_df_pid$met_timing_m <- factor(meta_df_pid$met_timing_m, levels= c("NA", "post_breakfast", "pre_breakfast"))
+```
+
+
+### Run the meta-analysis object for the comparison of morning exercise and baseline per participant
+```{r}
+meta_pid_m <- rma.uni(yi = meta_df_pid$diff_m, vi = rep(1, nrow(meta_df_pid)), method = "REML", slab = meta_df_pid$pid)
+```
+
+### Generate the forest plot object for the comparison of morning exercise and baseline per participant
+```{r}
+forest_pid_m <- forest(meta_pid_m,
+                      order = meta_df_pid$met_timing_m,
+                       xlim = c(-11, 11),
+                       ylim = c(-3, 26),
+                       alim = c(-7, 7),
+                       ilab.pos = 4,
+                       ilab.cex = 2,
+                       refline = 0,
+                       width = 7,
+                       showweights = TRUE,
+                       addfit = TRUE,
+                       slab = meta_pid_m$slab,
+                       header = c("Participant ID", "Weight       MD    95% CI       "),
+                       xlab = "Favours Morning                             Favours Baseline",
+                       mlab = "Random Effects Model",
+                       main = "Individual Effect Size Estimation Per Participant Between Morning Exercise Intervention and Baseline",
+                       colout = "firebrick4",
+                       col = "cyan4",
+                       border = "yellow4",
+                       fonts = "serif",
+                       cex = 1.5,
+                       cex.main = 1.5,
+                       offset = 5,
+                       rows = c(1:5, 8, 11:22),
+                       shade = c(6, 9, 23),
+                       colshade = rgb(217/255, 217/255, 217/255))
+
+
+res <- summary(meta_pid_m)
+
+text(-11, c(6,9,23), c("Not Specified", "Post-breakfast Metformin", "Pre-breakfast Metformin"), pos= 4, cex = 1.5, offset=5, font= 2)
+
+z_scores <-  c((3.92 * 0.84 / 2.80 - (-1.12)), 
+               (3.92 * -2.58 / -0.61 - (-4.53)), 
+               (3.92 * -0.96 / 1.00 - (-2.92)), 
+               (3.92 * - 0.23 / 1.73 - (-2.19)),
+               (3.92 * -0.48 / 1.48 - (-2.44)),
+               (3.92 * -0.26 / 1.70 - (-2.22)),
+               (3.92 * 1.46 / 3.42 - (-0.05)),
+               (3.92 *  2.01 / 3.97 -0.05),
+               (3.92 * -2.71  /-0.75 - (-4.67)),
+               (3.92 * -2.27 / -0.31 - (-4.23)),
+               (3.92 * -4.87 / -2.91 - (-6.83)),
+               (3.92 * 0.50 / 2.46 - (-1.46)),
+               (3.92 * -0.90 / 1.06 - (-2.86)),
+               (3.92 * 0.29 / 2.25 - (-1.67)),
+               (3.92 *-0.08 / 1.88 - (-2.03)),
+               (3.92 * 0.07 / 2.03 - (-1.89)),
+               (3.92 * 1.07 / 3.03 - (-0.89)),
+               (3.92 * -0.47 / 1.49 - (-2.43)))
+
+p_values <- 2 * (1 - pnorm(abs(z_scores)))
+adjusted_p_values <- p.adjust(p_values, method = "fdr")
+
+adjusted_p_value_pooled <- p.adjust(meta_pid_m$pval, method = "fdr")
+
+x_column4 <- forest_pid_m$xlim[2] 
+
+text(x_column4, c(1:5, 8, 11:22), labels = formatC(adjusted_p_values, digits = 4, format = "f"),
+     pos = 2, offset = 0.5, cex = 1.5)
+
+text(forest_pid_m$xlim[2], -1, pos = 2,
+     bquote(paste(.(ifelse(adjusted_p_value_pooled < 0.001, "<0.001",
+                           paste0(formatC(adjusted_p_value_pooled, digits = 4, format = "f")))))), cex = 1.5)
+
+
+text(11, 26, "Adjusted", pos = 2, offset = 0.5, cex = 1.5, font=2)
+text(11, 25, "p-value", pos = 2, offset = 0.5, cex = 1.5, font=2)
+text(2, 25, "Mean Difference, Inverse Variance", pos = 2, offset = 0.5, cex = 1.5, font=2)
+
+text(forest_pid_m$xlim[1], -2.5, pos = 4, offset = 5,
+     bquote(italic(paste("Test for heterogeneity: ", chi^2, "=",
+                         .(formatC(res$QE, digits = 3, format = "f")), ", df=",
+                         .(res$k - res$p), ", p-value=", 
+                         .(formatC(res$QEp, digits = 4, format = "f")), "; ", I^2, "=",
+                         .(formatC(res$I2, digits = 0, format = "f")), "%"))), cex = 1.5)
+```
+
+
+### Create a new varaible for the participant grouping by timing of metformin intake during evening exercise and add to the grouped data frame. Change the new variabble type from character to factor
+```{r}
+meta_df_pid$met_timing_e <- c("Danestone_06"="pre_breakfast", "Danestone_23"="post_breakfast", "Dufftown_06"="NA", "Elmbank_14"="pre_breakfast", "Finlayson_Stt_23"="NA", "Finlayson_Stt_26"="NA", "Garthdee_05"="pre_breakfast", "Holburn_23"="NA", "Holburn_26"="pre_breakfast", "Kingswells_03"="pre_breakfast", "Scotstown_23"="NA", "Stonehaven_01"="pre_breakfast", "Stonehaven_11"="pre_breakfast", "Stonehaven_13"="post_breakfast", "Stonehaven_16"="NA", "Stonehaven_26"="NA", "Stonehaven_32"="pre_breakfast", "Stonehaven_33"="post_breakfast")
+
+meta_df_pid$met_timing_e <- factor(meta_df_pid$met_timing_e, levels= c("NA", "post_breakfast", "pre_breakfast"))
+```
+
+
+### Run the meta-analysis object for the comparison of evening exercise and baseline per participant
+```{r}
+meta_pid_e <- rma.uni(yi = meta_df_pid$diff_e, vi = rep(1, nrow(meta_df_pid)), method = "REML", slab = meta_df_pid$pid)
+print(meta_pid_e)
+```
+
+
+### Generate the forest plot object for the comparison of evening exercise and baseline per participant
+```{r}
+forest_pid_e <- forest(meta_pid_e,
+                      order = meta_df_pid$met_timing_e,
+                       xlim = c(-11, 11),
+                       ylim = c(-3, 26),
+                       alim = c(-7, 7),
+                       ilab.pos = 4,
+                       ilab.cex = 2,
+                       refline = 0,
+                       width = 7,
+                       showweights = TRUE,
+                       addfit = TRUE,
+                       slab = meta_pid_e$slab,
+                       header = c("Participant ID", "Weight       MD    95% CI       "),
+                       xlab = "Favours Evening                             Favours Baseline",
+                       mlab = "Random Effects Model",
+                       main = "Individual Effect Size Estimation Per Participant Between Evening Exercise Intervention and Baseline",
+                       colout = "firebrick4",
+                       col = "cyan4",
+                       border = "yellow4",
+                       fonts = "serif",
+                       cex = 1.5,
+                       cex.main = 1.5,
+                       offset = 5,
+                       rows = c(1:5, 8, 11:22),
+                       shade = c(6, 9, 23),
+                       colshade = rgb(217/255, 217/255, 217/255))
+
+
+res <- summary(meta_pid_e)
+
+text(-11, c(6,9,23), c("Not Specified", "Post-breakfast Metformin", "Pre-breakfast Metformin"), pos= 4, cex = 1.5, offset=5, font= 2)
+
+z_scores <-  c((3.92 * 0.94 / 2.90 - (-1.02)), 
+               (3.92 * -3.60 / -1.64 - (-5.56)), 
+               (3.92 * -0.20 / 1.76 - (-2.16)), 
+               (3.92 * 1.94 / 3.90 - (-0.02)),
+               (3.92 * -0.58 / 1.38 - (-2.54)),
+               (3.92 * 0.08 / 2.04 - (-1.88)),
+               (3.92 * 1.01 / 0.95 - (-2.97)),
+               (3.92 * 0.08 / 2.04 - (-1.88)),
+               (3.92 * -1.30  / 0.66 - (-3.26)),
+               (3.92 * -0.88 / 1.08 - (-2.84)),
+               (3.92 * -2.70 / -0.74 - (-4.66)),
+               (3.92 * 0.93 / 2.89 - (-1.03)),
+               (3.92 * -0.67 / 1.28 - (-2.63)),
+               (3.92 * 0.07 / 2.03 - (-1.88)),
+               (3.92 * 0.35 / 2.31 - (-1.61)),
+               (3.92 * 0.38 / 2.34 - (-1.58)),
+               (3.92 * 0.90 / 2.86 - (-1.06)),
+               (3.92 * -1.68 / 0.28 - (-3.64)))
+
+p_values <- 2 * (1 - pnorm(abs(z_scores)))
+adjusted_p_values <- p.adjust(p_values, method = "fdr")
+
+adjusted_p_value_pooled <- p.adjust(meta_pid_e$pval, method = "fdr")
+
+x_column4 <- forest_pid_e$xlim[2] 
+
+text(x_column4, c(1:5, 8, 11:22), labels = formatC(adjusted_p_values, digits = 4, format = "f"),
+     pos = 2, offset = 0.5, cex = 1.5)
+
+text(forest_pid_e$xlim[2], -1, pos = 2,
+     bquote(paste(.(ifelse(adjusted_p_value_pooled < 0.001, "<0.001",
+                           paste0(formatC(adjusted_p_value_pooled, digits = 4, format = "f")))))), cex = 1.5)
+
+
+text(11, 26, "Adjusted", pos = 2, offset = 0.5, cex = 1.5, font=2)
+text(11, 25, "p-value", pos = 2, offset = 0.5, cex = 1.5, font=2)
+text(2, 25, "Mean Difference, Inverse Variance", pos = 2, offset = 0.5, cex = 1.5, font=2)
+
+text(forest_pid_e$xlim[1], -2.5, pos = 4, offset = 5,
+     bquote(italic(paste("Test for heterogeneity: ", chi^2, "=",
+                         .(formatC(res$QE, digits = 3, format = "f")), ", df=",
+                         .(res$k - res$p), ", p-value=", 
+                         .(formatC(res$QEp, digits = 4, format = "f")), "; ", I^2, "=",
+                         .(formatC(res$I2, digits = 0, format = "f")), "%"))), cex = 1.5)
+```
+
+
+### Group the data frame by time
+```{r}
+meta_df_time <- meta_df %>%
+  group_by(time) %>%
+  summarize(diff_m = mean(diff_m), sd_m = sum(sd_m), diff_e = mean(diff_e), sd_e = sum(sd_e))
+```
+
+
+### Run the meta-analysis object for the comparison of morning exercise and baseline per time
+```{r}
+meta_time_m <- rma.uni(yi = meta_df_time$diff_m, vi = rep(1, nrow(meta_df_time)), method = "REML", slab = meta_df_time$time)
+print(meta_time_m)
+```
+
+
+### Generate the forest plot object for the comparison of morning exercise and baseline per time
+```{r}
+forest_time_m <- forest(meta_time_m,
+                        order = meta_time_m$slab,
+                        xlim = c(-11, 11),
+                        ylim = c(-3, 27),
+                        alim = c(-7, 7),
+                        ilab.pos = 4,
+                        ilab.cex = 2,
+                        refline = 0,
+                        width = 7,
+                        showweights = TRUE,
+                        addfit = TRUE,
+                        slab = meta_time_m$slab,
+                        header = c("Time of Day (Hours)", "Weight       MD    95% CI       "),
+                        xlab = "Favours Morning                             Favours Baseline",
+                        mlab = "Random Effects Model",
+                        main = "Individual Effect Size Estimation Per Time Between Morning Exercise Intervention and Baseline",
+                        colout = "firebrick4",
+                        col = "cyan4",
+                        border = "yellow4",
+                        fonts = "serif",
+                        cex = 1.5,
+                        cex.main = 1.5,
+                        offset = 5)
+
+
+res <- summary(meta_time_m)
+
+z_scores <-  c((3.92 * -0.73 / 1.23 - (-2.69)), 
+               (3.92 * -0.88 / 1.08 - (-2.84)), 
+               (3.92 * -0.59 / 1.37 - (-2.55)), 
+               (3.92 * -0.64 / 1.32 - (-2.60)),
+               (3.92 * -0.59 / 1.37 - (-2.55)),
+               (3.92 * -0.46 / 1.50 - (-2.42)),
+               (3.92 * -0.24 / 1.72 - (-2.20)),
+               (3.92 * -0.26 / 1.70 - (-2.22)),
+               (3.92 * 0.03  / 1.99 - (-1.93)),
+               (3.92 * -0.21 / 1.75 - (-2.17)),
+               (3.92 * -0.54 / 1.42 - (-2.50)),
+               (3.92 * -0.84 / 1.12 - (-2.80)),
+               (3.92 * -0.48 / 1.48 - (-2.44)),
+               (3.92 * -0.76 / 1.19 - (-2.72)),
+               (3.92 * -0.86 / 1.10 - (-2.82)),
+               (3.92 * -0.28 / 1.68 - (-2.24)),
+               (3.92 * -0.39 / 1.57 - (-2.35)),
+               (3.92 * -0.44 / 1.52 - (-2.40)),
+               (3.92 * -0.50 / 1.46 - (-2.46)),
+               (3.92 * -0.59 / 1.37 - (-2.55)),
+               (3.92 * -0.22 / 1.74 - (-2.18)),
+               (3.92 * -0.52 / 1.44 - (-2.48)),
+               (3.92 * -0.87 / 1.09 - (-2.83)),
+               (3.92 * -0.85 / 1.11 - (-2.81)))
+
+p_values <- 2 * (1 - pnorm(abs(z_scores)))
+adjusted_p_values <- p.adjust(p_values, method = "fdr")
+
+adjusted_p_value_pooled <- p.adjust(meta_time_m$pval, method = "fdr")
+
+x_column4 <- forest_time_m$xlim[2] 
+
+text(x_column4, 1:nrow(meta_df_time), labels = formatC(adjusted_p_values, digits = 4, format = "f"),
+     pos = 2, offset = 0.5, cex = 1.5)
+
+text(forest_time_m$xlim[2], -1, pos = 2,
+     bquote(paste(.(ifelse(adjusted_p_value_pooled < 0.001, "<0.001",
+                           paste0(formatC(adjusted_p_value_pooled, digits = 4, format = "f")))))), cex = 1.5)
+
+text(11, 27, "Adjusted", pos = 2, offset = 0.5, cex = 1.5, font=2)
+text(11, 26, "p-value", pos = 2, offset = 0.5, cex = 1.5, font=2)
+text(2, 26, "Mean Difference, Inverse Variance", pos = 2, offset = 0.5, cex = 1.5, font=2)
+
+text(forest_time_m$xlim[1], -2.5, pos = 4, offset = 5,
+     bquote(italic(paste("Test for heterogeneity: ", chi^2, "=",
+                         .(formatC(res$QE, digits = 3, format = "f")), ", df=",
+                         .(res$k - res$p), ", p-value=", 
+                         .(formatC(res$QEp, digits = 4, format = "f")), "; ", I^2, "=",
+                         .(formatC(res$I2, digits = 0, format = "f")), "%"))), cex = 1.5)
+```
+
+
+### Run the meta-analysis object for the comparison of evening exercise and baseline per time
+```{r}
+meta_time_e <- rma.uni(yi = meta_df_time$diff_e, vi = rep(1, nrow(meta_df_time)), method = "REML", slab = meta_df_time$time)
+print(meta_time_e)
+```
+
+
+### Generate the forest plot object for the comparison of evening exercise and baseline per time
+```{r}
+forest_time_e <- forest(meta_time_e,
+                        order = meta_time_e$slab,
+                        xlim = c(-11, 11),
+                        ylim = c(-3, 27),
+                        alim = c(-7, 7),
+                        ilab.pos = 4,
+                        ilab.cex = 2,
+                        refline = 0,
+                        width = 7,
+                        showweights = TRUE,
+                        addfit = TRUE,
+                        slab = meta_time_e$slab,
+                        header = c("Time of Day (Hours)", "Weight       MD    95% CI       "),
+                        xlab = "Favours Evening                             Favours Baseline",
+                        mlab = "Random Effects Model",
+                        main = "Individual Effect Size Estimation Per Time Between Evening Exercise Intervention and Baseline",
+                        colout = "firebrick4",
+                        col = "cyan4",
+                        border = "yellow4",
+                        fonts = "serif",
+                        cex = 1.5,
+                        cex.main = 1.5,
+                        offset = 5)
+
+
+res <- summary(meta_time_e)
+
+z_scores <-  c((3.92 * -0.05 / 1.91 - (-2.01)), 
+               (3.92 * -0.11 / 1.85 - (-2.07)), 
+               (3.92 * -0.39 / 1.57 - (-2.35)), 
+               (3.92 * -0.57 / 1.39 - (-2.53)),
+               (3.92 * -0.51 / 1.45 - (-2.47)),
+               (3.92 * -0.45 / 1.51 - (-2.41)),
+               (3.92 * -0.33 / 1.63 - (-2.29)),
+               (3.92 * -0.18 / 1.78 - (-2.14)),
+               (3.92 * -0.33  / 1.93 - (-1.99)),
+               (3.92 * -0.11 / 1.85 - (-2.07)),
+               (3.92 *  0.62 / 2.58 - (-1.34)),
+               (3.92 * -0.09 / 1.87 - (-2.05)),
+               (3.92 * -0.17 / 1.79 - (-2.13)),
+               (3.92 * -0.09 / 1.87 - (-2.05)),
+               (3.92 *  0.36 / 2.32 - (-1.60)),
+               (3.92 *  0.38  / 2.34 -(-1.58)),
+               (3.92 * -0.17 / 1.79 - (-2.13)),
+               (3.92 * -0.71 / 1.25 - (-2.67)),
+               (3.92 * -0.97 / 0.99 - (-2.93)),
+               (3.92 * -1.24 / 0.72 - (-3.20)),
+               (3.92 * -1.20 / 0.76 - (-3.16)),
+               (3.92 * -1.19 / 0.77 - (-3.15)),
+               (3.92 * -0.97 / 0.99 - (-2.93)),
+               (3.92 * -1.09 / 0.87 - (-3.05)))
+
+p_values <- 2 * (1 - pnorm(abs(z_scores)))
+adjusted_p_values <- p.adjust(p_values, method = "fdr")
+
+adjusted_p_value_pooled <- p.adjust(meta_time_e$pval, method = "fdr")
+
+x_column4 <- forest_time_e$xlim[2] 
+
+text(x_column4, 1:nrow(meta_df_time), labels = formatC(adjusted_p_values, digits = 4, format = "f"),
+     pos = 2, offset = 0.5, cex = 1.5)
+
+text(forest_time_e$xlim[2], -1, pos = 2,
+     bquote(paste(.(ifelse(adjusted_p_value_pooled < 0.001, "<0.001",
+                           paste0(formatC(adjusted_p_value_pooled, digits = 4, format = "f")))))), cex = 1.5)
+
+text(11, 27, "Adjusted", pos = 2, offset = 0.5, cex = 1.5, font=2)
+text(11, 26, "p-value", pos = 2, offset = 0.5, cex = 1.5, font=2)
+text(2, 26, "Mean Difference, Inverse Variance", pos = 2, offset = 0.5, cex = 1.5, font=2)
+
+text(forest_time_e$xlim[1], -2.5, pos = 4, offset = 5,
+     bquote(italic(paste("Test for heterogeneity: ", chi^2, "=",
+                         .(formatC(res$QE, digits = 3, format = "f")), ", df=",
+                         .(res$k - res$p), ", p-value=", 
+                         .(formatC(res$QEp, digits = 4, format = "f")), "; ", I^2, "=",
+                         .(formatC(res$I2, digits = 0, format = "f")), "%"))), cex = 1.5)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
